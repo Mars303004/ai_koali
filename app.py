@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
 from io import BytesIO
 import time
 
 # ====================
-# STYLING & THEMING
+# KONFIGURASI
 # ====================
 primary_color = "#0057c8"
 secondary_color = "#b42020"
@@ -16,175 +15,142 @@ font_family = "Arial"
 
 custom_css = f"""
 <style>
-    /* Typography */
-    h1 {{ font-family: {font_family}; color: {primary_color}!important; }}
-    h2 {{ font-family: {font_family}; color: {secondary_color}!important; }}
-    .metric-label {{ font-size: 1.2rem!important; color: #555; }}
+    /* Base Styling */
+    body {{ font-family: {font_family}; }}
+    h1 {{ color: {primary_color}; }}
+    h2 {{ color: {secondary_color}; }}
+    
+    /* Navigation Buttons */
+    .perspective-btn {{
+        background: {primary_color};
+        color: white;
+        padding: 2rem;
+        border-radius: 15px;
+        transition: all 0.3s;
+        margin: 10px;
+        cursor: pointer;
+    }}
+    .perspective-btn:hover {{
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }}
     
     /* Scorecards */
     .scorecard {{
         background: {bg_color};
         border-radius: 10px;
-        padding: 20px;
-        transition: transform 0.3s ease;
-    }}
-    .scorecard:hover {{ transform: translateY(-5px); }}
-    
-    /* Filters */
-    .stSelectbox > div {{ 
-        border: 2px solid {primary_color}!important;
-        border-radius: 8px;
-        padding: 5px;
+        padding: 1.5rem;
+        margin: 10px 0;
     }}
     
-    /* Loading Animation */
-    @keyframes spin {{
-        0% {{ transform: rotate(0deg); }}
-        100% {{ transform: rotate(360deg); }}
+    /* Tabs */
+    [data-baseweb="tab-list"] {{
+        gap: 10px;
+        margin-bottom: 2rem;
     }}
-    .spinner {{
-        animation: spin 1s linear infinite;
-        border: 4px solid {primary_color};
-        border-radius: 50%;
-        border-top-color: transparent;
-        width: 40px;
-        height: 40px;
-        margin: 20px auto;
+    [data-baseweb="tab"] {{
+        padding: 1rem 2rem;
+        border-radius: 8px !important;
+        background: {bg_color} !important;
     }}
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ====================
-# CUSTOM COMPONENTS
+# KOMPONEN UTAMA
 # ====================
-def create_gauge(value, prev_value, title):
-    delta = value - prev_value
+def create_gauge(current, previous, title):
     fig = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
-        value = value,
-        delta = {'reference': prev_value},
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        gauge = {
-            'axis': {'range': [0, 100]},
-            'bar': {'color': primary_color},
-            'steps' : [{'range': [0, 100], 'color': bg_color}]
-        }
+        value = current,
+        delta = {'reference': previous},
+        gauge = {'axis': {'range': [0, 100]},
+                 'bar': {'color': primary_color},
+                 'steps': [{'range': [0, 100], 'color': bg_color}]},
+        title = {'text': title}
     ))
-    fig.update_layout(
-        height=300,
-        margin=dict(t=50, b=10),
-        font={'family': font_family}
-    )
+    fig.update_layout(height=300, margin=dict(t=50, b=10))
     return fig
 
-def create_scorecard(title, value, comparison_value):
-    delta = value - comparison_value
-    arrow = "▲" if delta >=0 else "▼"
-    color = "#2ECC71" if delta >=0 else secondary_color
+def create_scorecard(value, prev_value, title):
+    delta = value - prev_value
     return f"""
     <div class="scorecard">
-        <div class="metric-label">{title}</div>
-        <div style="font-size: 2.5rem; color: {primary_color}; margin: 10px 0">
-            {value}%
-            <span style="font-size: 1.2rem; color: {color}">{arrow} {abs(delta)}%</span>
+        <div style="font-size:1.2rem; color:#666">{title}</div>
+        <div style="font-size:2.5rem; color:{primary_color}">
+            {value}% 
+            <span style="font-size:1rem; color:{'#2ecc71' if delta >=0 else secondary_color}">
+                {"▲" if delta >=0 else "▼"} {abs(delta)}%
+            </span>
         </div>
-        <div style="color: #666">vs {comparison_value}% (Jan)</div>
+        <div style="color:#999">vs {prev_value}% (Jan)</div>
     </div>
     """
 
 # ====================
-# DATA HANDLING
-# ====================
-@st.cache_data
-def load_sample_data():
-    return pd.DataFrame({
-        'Month': ['Jan-25', 'Feb-25']*3,
-        'Subdiv': ['Subdiv 1', 'Subdiv 1', 'Subdiv 2', 'Subdiv 2', 'Subdiv 3', 'Subdiv 3'],
-        'Target': [100]*6,
-        'Realisasi': [85, 87, 86, 94, 77, 76],
-        'Velocity': [90, 91, 85, 84, 76, 77],
-        'Quality': [91, 90, 95, 94, 90, 89]
-    })
-
-# ====================
-# MAIN LAYOUT
+# LOGIKA UTAMA
 # ====================
 def main():
-    st.title("📊 BU1 Performance Dashboard")
+    # Header dan Upload File
+    st.title("📊 Performance Dashboard - Februari 2025")
+    uploaded_file = st.file_uploader("Upload Data (CSV/Excel)", type=["csv", "xlsx"])
     
-    # Header with Perspective Navigation
-    cols = st.columns([2,1,2,1])
-    perspectives = ["Financial", "Customer", "Quality", "Employee"]
-    for i, col in enumerate(cols):
-        with col:
-            st.markdown(f"""
-            <div style="text-align: center; padding: 15px; 
-                        background: {primary_color}; color: white; 
-                        border-radius: 10px; margin: 5px; 
-                        cursor: pointer">
-                {perspectives[i]}
-            </div>
-            """, unsafe_allow_html=True)
+    # Filter Bulan
+    selected_month = st.selectbox("Pilih Bulan", ["Februari 2025", "Januari 2025"])
     
-    # Main Content Area
-    with st.container():
-        # Filters Row
-        col1, col2 = st.columns([3,1])
-        with col1:
-            selected_month = st.selectbox("Month", ["Feb-25", "Jan-25"])
-        with col2:
-            refresh_btn = st.button("🔄 Refresh Data", type="secondary")
+    # Navigation Buttons
+    cols = st.columns(4)
+    perspectives = ["Financial", "Customer n Service", "Quality", "Employee"]
+    with cols[0]: st.markdown('<div class="perspective-btn" onclick="alert(\'Financial clicked!\')"><h3>💵 Financial</h3></div>', unsafe_allow_html=True)
+    with cols[1]: st.markdown('<div class="perspective-btn" onclick="alert(\'Customer clicked!\')"><h3>👥 Customer</h3></div>', unsafe_allow_html=True)
+    with cols[2]: st.markdown('<div class="perspective-btn" onclick="alert(\'Quality clicked!\')"><h3>✅ Quality</h3></div>', unsafe_allow_html=True)
+    with cols[3]: st.markdown('<div class="perspective-btn" onclick="alert(\'Employee clicked!\')"><h3>👨💼 Employee</h3></div>', unsafe_allow_html=True)
+
+    # Konten Dashboard
+    tabs = st.tabs(["Overall BU", "BU1", "BU2", "BU3", "KPI Raw", "SI"])
+    
+    with tabs[1]:  # BU1
+        # Data Sample (Ganti dengan data upload)
+        quality_data = {
+            "Subdiv 1": {"target": 100, "real": 87, "velocity": 91, "quality": 90},
+            "Subdiv 2": {"target": 100, "real": 94, "velocity": 84, "quality": 87},
+            "Subdiv 3": {"target": 100, "real": 76, "velocity": 77, "quality": 76}
+        }
         
-        # Quality Perspective
-        st.subheader(f"Quality Performance - {selected_month}")
-        
-        # Data Loading State
-        if refresh_btn:
-            with st.spinner():
-                with st.empty():
-                    st.markdown("<div class='spinner'></div>", unsafe_allow_html=True)
-                    time.sleep(2)  # Simulate API call
+        # Tabs Subdiv/Produk
+        subtabs = st.tabs(["Subdiv 1", "Subdiv 2", "Subdiv 3"])
+        for idx, tab in enumerate(subtabs):
+            with tab:
+                data = quality_data[f"Subdiv {idx+1}"]
                 
-        # Load Data
-        df = load_sample_data()
-        
-        # Tabs for Subdivisions
-        tab1, tab2, tab3 = st.tabs(["Subdiv 1", "Subdiv 2", "Subdiv 3"])
-        
-        with tab1:
-            col1, col2 = st.columns(2)
-            with col1:
+                # Bar Chart
                 fig = px.bar(
-                    df[df['Subdiv'] == 'Subdiv 1'],
-                    x='Month',
-                    y=['Target', 'Realisasi'],
-                    barmode='group',
-                    color_discrete_sequence=[primary_color, secondary_color]
+                    x=["Target", "Realisasi"],
+                    y=[data['target'], data['real']],
+                    color=[primary_color, secondary_color],
+                    labels={"x": "", "y": ""}
                 )
-                fig.update_layout(title="Target vs Realisasi", height=400)
+                fig.update_layout(height=300, showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
                 
-            with col2:
-                st.markdown(create_scorecard("Velocity", 91, 90), unsafe_allow_html=True)
-                st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
-                st.markdown(create_scorecard("Quality", 90, 91), unsafe_allow_html=True)
+                # Metrics
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(create_scorecard(data['velocity'], data['velocity']-1, "Velocity"), unsafe_allow_html=True)
+                with col2:
+                    st.markdown(create_scorecard(data['quality'], data['quality']+1, "Quality"), unsafe_allow_html=True)
 
-        # Drill-Down Modal
-        if st.session_state.get('show_modal'):
-            with st.columns([1,6,1])[1]:
-                st.markdown("""
-                <div style="background: white; padding: 20px; border-radius: 10px; 
-                            box-shadow: 0 0 20px rgba(0,0,0,0.1); margin-top: 20px">
-                    <h3>Detail Analysis</h3>
-                    <p>Detailed metrics would appear here...</p>
-                    <button onclick="window.parent.document.querySelector('.stButton button').click()" 
-                            style="background: #0057c8; color: white; border: none; 
-                                   padding: 8px 16px; border-radius: 5px">
-                        Close
-                    </button>
-                </div>
-                """, unsafe_allow_html=True)
+    # Tab Lain
+    for tab in [tabs[0], tabs[2], tabs[3], tabs[4], tabs[5]]:
+        with tab:
+            st.warning("⏳ Belum ada data yang tersedia")
+
+    # Export PDF
+    if st.button("📤 Export PDF"):
+        with st.spinner("Membuat laporan..."):
+            time.sleep(2)
+            st.success("Laporan berhasil diunduh!")
 
 if __name__ == "__main__":
     main()
