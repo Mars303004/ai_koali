@@ -19,18 +19,21 @@ st.set_page_config(layout="wide")
 # KOMPONEN KUSTOM
 # ====================
 def create_gauge(current, previous, title):
-    delta = current - previous
+    delta_value = current - previous
     fig = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = current,
-        delta = {'reference': previous},
+        delta = {
+            'reference': previous,
+            'increasing': {'color': '#2ecc71'}, 
+            'decreasing': {'color': secondary_color}
+        },
         gauge = {
             'axis': {'range': [0, 100]},
             'bar': {'color': primary_color},
             'steps': [{'range': [0, 100], 'color': bg_color}]
         },
-        number = {'font': {'color': '#2ecc71' if delta >=0 else secondary_color}},
-        delta = {'increasing': {'color': '#2ecc71'}, 'decreasing': {'color': secondary_color}}
+        number = {'font': {'color': '#2ecc71' if delta_value >=0 else secondary_color}},
     ))
     fig.update_layout(
         height=300,
